@@ -1,5 +1,5 @@
 use crate::{
-    auth::{authorize, sign_in},
+    auth::{authorize_middleware, sign_in},
     config::Config,
     services::hello,
 };
@@ -13,7 +13,10 @@ pub fn app(config: Config) -> Router {
         .route("/sign_in", post(sign_in))
         .route(
             "/protected/",
-            get(hello).layer(middleware::from_fn(authorize)),
+            get(hello).layer(middleware::from_fn_with_state(
+                config.clone(),
+                authorize_middleware,
+            )),
         )
         .with_state(config)
 }
