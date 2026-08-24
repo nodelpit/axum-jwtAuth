@@ -1,31 +1,38 @@
+// main.rs
+use jsonwebtoken::{DecodingKey, EncodingKey};
+use std::sync::Arc;
 use tokio::net::TcpListener;
-mod auth;
-mod config;
-mod error;
-mod routes;
-mod services;
 
-use crate::config::Config;
-use crate::routes::app;
+use axum_jwt_auth::{
+    app,
+    config::Config,
+    state::{AppState, AppStateInner},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv()?;
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
 
-    let addr = listener.local_addr().unwrap();
-    println!("Listening on {}", addr);
+    // Lecture de l'environnement (chaînes brutes)
+    let config = Config::from_env()?;
 
-    let config = Config {
-        jwt_private_key: std::env::var("JWT_PRIVATE_KEY_PATH")?,
-        jwt_public_key: std::env::var("JWT_PUBLIC_KEY_PATH")?,
-        auth_email: std::env::var("AUTH_EMAIL")?,
-        auth_first_name: std::env::var("AUTH_FIRST_NAME")?,
-        auth_last_name: std::env::var("AUTH_LAST_NAME")?,
-        auth_password_hash: std::env::var("AUTH_PASSWORD_HASH")?,
+    // Lecture + parsing des clés UNE seule fois, au démarrage
+    let private_pem = std::fs::read(&config.jwt_private_key)?;
+    let public_pem = std::fs::read(&config.jwt_public_key)?;
+
+    let state = AppState {
+        inner: Arc::new(AppStateInner {
+            encoding_key: EncodingKey::from_rsa_pem(&private_pem)?,
+            decoding_key: DecodingKey::from_rsa_pem(&public_pem)?,
+            auth_email: config.auth_email,
+            auth_first_name: config.auth_first_name,
+            auth_last_name: config.auth_last_name,
+            auth_password_hash: config.auth_password_hash,
+        }),
     };
 
-    axum::serve(listener, app(config)).await?;
-
+    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    println!("Listening on {}", listener.local_addr()?);
+    axum::serve(listener, app(state)).await?;
     Ok(())
 }
