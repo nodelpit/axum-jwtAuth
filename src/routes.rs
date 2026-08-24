@@ -1,22 +1,16 @@
-use crate::{
-    auth::{authorize_middleware, sign_in},
-    config::Config,
-    services::hello,
-};
 use axum::{
-    Router, middleware,
+    Router,
     routing::{get, post},
 };
 
-pub fn app(config: Config) -> Router {
+use crate::{
+    handlers::{auth::sign_in, user::hello},
+    state::AppState,
+};
+
+pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/sign_in", post(sign_in))
-        .route(
-            "/protected/",
-            get(hello).layer(middleware::from_fn_with_state(
-                config.clone(),
-                authorize_middleware,
-            )),
-        )
-        .with_state(config)
+        .route("/protected/", get(hello))
+        .with_state(state)
 }
