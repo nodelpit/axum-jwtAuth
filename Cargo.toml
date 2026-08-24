@@ -1,10 +1,11 @@
 [package]
-name = "axum-jwtAuth"
+name = "axum-jwt-auth"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 axum = "0.8.9"
+axum-extra = { version = "0.12.6", features = ["typed-header"] }
 bcrypt = "0.19.3"
 chrono = { version = "0.4.45", features = ["serde"] }
 dotenvy = "0.15.7"
