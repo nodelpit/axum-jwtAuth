@@ -214,6 +214,70 @@ Qui détient le token peut l'utiliser. D'où :
 
 ---
 
+## 9. L'architecture derrière le flux
+
+Ce flux met en jeu des tâches très différentes : signer un token, vérifier un mot de passe, retrouver un utilisateur, garder une ressource, répondre à une requête. Les fondre dans un seul bloc donne un système qu'on ne peut plus faire évoluer sans tout risquer. Le principe est donc la **séparation des responsabilités** : chaque brique a **une seule raison de changer**.
+
+**Pourquoi découper ainsi :**
+
+- **Évoluer sans casser** : changer la durée de vie du token ne touche qu'à la logique de token ; remplacer l'utilisateur factice par une vraie base ne touche qu'au dépôt. Le reste l'ignore.
+- **Tester par morceaux** : une brique isolée se teste seule, sans monter tout le système.
+- **S'y retrouver** : le rôle d'une brique se lit dans son nom ; on sait où chercher.
+
+**Une responsabilité par brique :**
+
+- **Configuration** — lire les réglages externes dans une structure simple. Séparer *lire* la config de *l'utiliser*.
+- **État partagé** — détenir les ressources coûteuses et nécessaires à chaque requête, au premier chef la **clé** de signature/vérification, préparée **une seule fois au démarrage**.
+- **Logique de token** — signer et vérifier. Rien d'autre.
+- **Logique de mot de passe** — calculer et comparer les empreintes.
+- **Dépôt** (l'accès aux données utilisateur) — retrouver un utilisateur. C'est la **couture** où une vraie base viendra se brancher.
+- **Point de contrôle** — la garde qui s'exécute *avant* la ressource : extrait le token, le vérifie, charge l'utilisateur, remet cette identité au gestionnaire.
+- **Gestionnaires** — la couche mince qui reçoit la requête et orchestre les briques.
+- **Traduction des erreurs** — un vocabulaire d'erreurs unique, traduit en réponse à **un seul endroit**.
+- **Démarrage** — câbler tout ça une fois et lancer.
+
+**Comment ça s'assemble :**
+
+```
+   AU DÉMARRAGE (une seule fois)
+
+        Démarrage
+            │  lit la config, charge et prépare les clés
+            ▼
+        État partagé
+        (clés prêtes, partagées par tout le reste)
+
+   ───────────────────────────────────────────
+
+   À CHAQUE REQUÊTE PROTÉGÉE
+
+        Gestionnaire de requête
+            │  « il me faut un utilisateur authentifié »
+            ▼
+        Point de contrôle (garde)
+            │
+      ┌─────┴─────┐
+      ▼           ▼
+  Logique       Dépôt
+  token         (retrouve
+  (vérifie)     l'utilisateur)
+      │           │
+      └─────┬─────┘
+            ▼
+   Identité remise au gestionnaire
+            │
+            ▼
+   Ressource protégée exécutée
+```
+
+**Les trois choix qui comptent vraiment**, au-delà du simple rangement :
+
+1. **Préparer une fois, servir mille fois.** La clé est chargée et préparée **au démarrage**, pas à chaque requête. Une clé invalide fait alors **échouer le démarrage** tout de suite, au lieu de casser une requête sur deux en production ; et le travail coûteux n'est pas refait à chaque appel. C'est le rôle de l'**état partagé**.
+2. **La garde ne s'oublie pas.** Le point de contrôle est placé *avant* la ressource par construction : un gestionnaire protégé ne s'exécute **que** pour un appelant déjà vérifié. Impossible d'« oublier » la vérification sur une route.
+3. **Une seule voix pour les erreurs.** Token manquant, invalide, mauvais identifiants, utilisateur inconnu… tout partage un vocabulaire commun et se traduit au même endroit. Réponses cohérentes (pas d'indice offert à un attaquant sur *ce qui* a échoué), et un seul point à modifier.
+
+---
+
 ## À retenir
 
 - **2 phases** : s'authentifier **une fois**, s'autoriser **à chaque requête**.
@@ -221,3 +285,4 @@ Qui détient le token peut l'utiliser. D'où :
 - **Signature** = intégrité + authenticité (anti-falsification).
 - Charge **lisible, pas secrète**.
 - **Porteur** → transport chiffré + expiration.
+- **Structure** : une responsabilité par brique, clés préparées une fois, erreurs traduites en un seul endroit.
